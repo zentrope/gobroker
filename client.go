@@ -96,13 +96,10 @@ func (client *Client) Start() error {
 	client.writer = bufio.NewWriter(conn)
 	client.reader = bufio.NewReader(conn)
 
-	// client.life_ch = make(chan struct{}, 0)
-	// client.processLoop()
 	client.readLoop()
 	return nil
 }
 
 func (client *Client) Stop() error {
-	// close(client.life_ch)
 	return client.conn.Close()
 }
