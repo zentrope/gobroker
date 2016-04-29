@@ -38,27 +38,20 @@ func (topic *topic) process() {
 			select {
 
 			case _ = <-topic.lifecycle_ch:
-				log.Printf(" [%s] quitting", topic.name)
 				return
 
 			case msg := <-topic.incoming_ch:
 				num_subs := len(topic.subscribers)
 				if num_subs != 0 {
-					log.Println("------------------------------------------------------")
-					log.Printf(" [%s] num subscribers: %d", topic.name, num_subs)
 					for _, client := range topic.subscribers {
-						log.Printf(" [%s] broadcast: [%v]", topic.name, client.conn.RemoteAddr())
 						client.publish(msg)
 					}
-					log.Println("------------------------------------------------------")
 				}
 
 			case client := <-topic.subscribe_ch:
-				log.Printf(" [%s] add.client: [%v]", topic.name, client.conn.RemoteAddr())
 				topic.subscribers = append(topic.subscribers, client)
 
 			case client := <-topic.unsubscribe_ch:
-				log.Printf(" [%s] rm.client: [%v]", topic.name, client.conn.RemoteAddr())
 				clients := make([]*brokerClient, 0)
 				for _, subscriber := range topic.subscribers {
 					if client != subscriber {
@@ -107,10 +100,8 @@ func (client *brokerClient) read() {
 				log.Printf("Error: %v\n", err)
 				break
 			}
-			log.Printf("read: %s", message.TypeOf())
 			client.incoming_ch <- message
 		}
-		log.Println(" - read terminated")
 		client.stop()
 	}()
 }
@@ -132,16 +123,15 @@ func (client *brokerClient) process() {
 }
 
 func (client *brokerClient) publish(msg []byte) {
-	n, err := client.writer.Write(msg)
+	_, err := client.writer.Write(msg)
 	client.writer.Flush()
 	if err != nil {
 		log.Println("ERROR:", err)
 	}
-	log.Printf(" -> client %v wrote %d bytes", client.conn.RemoteAddr(), n)
 }
 
 func (client *brokerClient) start() {
-	log.Println("Starting client.")
+	log.Println(" - starting client", client.conn.RemoteAddr())
 	client.reader = bufio.NewReader(client.conn)
 	client.writer = bufio.NewWriter(client.conn)
 	client.process()
@@ -149,7 +139,7 @@ func (client *brokerClient) start() {
 }
 
 func (client *brokerClient) stop() {
-	log.Println("Stopping client.")
+	log.Println(" - stopping client", client.conn.RemoteAddr())
 	close(client.lifecycle_ch)
 	client.dispatcher.disconnect(client)
 }
@@ -205,8 +195,7 @@ func (broker *Broker) dispatch(client *brokerClient, msg Message) {
 		broker.subscribe_ch <- subEvent{client, msg.Topic}
 
 	case BrokerUnsubMessage:
-		log.Println(" - we got an unsubscribe message")
-
+		log.Println(" - unsubscribe not implemented")
 	}
 }
 
@@ -223,68 +212,67 @@ func (broker *Broker) processLoop() {
 			case _ = <-broker.lifecycle_ch:
 				break
 
-			case event := <-broker.publish_ch:
-				// Publish to a topic if it exists. If it doesn't exist, that
-				// means there are no subscribers, so there's no point in
-				// sending a message. We'll just drop it.
+			case conn := <-broker.accept_ch:
+				broker.handleAccept(conn)
 
-				name := event.message.Topic
-				if topic := broker.topics[name]; topic != nil {
-					msg, err := event.message.Encode()
-					if err != nil {
-						log.Println("Error: unable to encode msg for delivery.", msg)
-					} else {
-						topic.publish(msg)
-					}
-				} else {
-					log.Printf("Error: unable to find topic [%s] for delivery.", name)
-				}
+			case event := <-broker.publish_ch:
+				broker.handlePublish(event)
 
 			case event := <-broker.subscribe_ch:
-				var name = event.topic
-				var topic *topic
-
-				topic, ok := broker.topics[name]
-				if !ok {
-					topic = newTopic(name)
-					topic.start()
-					broker.topics[name] = topic
-				}
-				topic.subscribe(event.client)
-
-				log.Printf("topics: %v", broker.topics)
-
-			case conn := <-broker.accept_ch:
-				log.Println(" - incoming connection")
-				nc := len(broker.clients)
-				client := newBrokerClient(conn, broker)
-				broker.clients = append(broker.clients, client)
-				client.start()
-				log.Printf(" - %d -> %d clients\n", nc, len(broker.clients))
+				broker.handleSubscribe(event)
 
 			case client := <-broker.delete_ch:
-				log.Println(" - DELETE:", client.conn.RemoteAddr())
-				for _, topic := range broker.topics {
-					log.Printf(" - unsub from %s", topic.name)
-					topic.unsubscribe(client)
-				}
-
-				log.Println(" - deleting client from server")
-				numClients := len(broker.clients)
-				newClients := make([]*brokerClient, 0)
-
-				for _, item := range broker.clients {
-					if item == client {
-						continue
-					}
-					newClients = append(newClients, item)
-				}
-
-				broker.clients = newClients
-				log.Printf(" - %d to %d clients\n", numClients, len(broker.clients))
+				broker.handleDelete(client)
 			}
 		}
 	}()
+}
+
+func (broker *Broker) handleAccept(conn net.Conn) {
+	client := newBrokerClient(conn, broker)
+	broker.clients = append(broker.clients, client)
+	client.start()
+}
+
+func (broker *Broker) handlePublish(event pubEvent) {
+	name := event.message.Topic
+	if topic := broker.topics[name]; topic != nil {
+		msg, err := event.message.Encode()
+		if err != nil {
+			log.Println("Error: unable to encode msg for delivery.", msg)
+		}
+		topic.publish(msg)
+	}
+}
+
+func (broker *Broker) handleSubscribe(event subEvent) {
+	var name = event.topic
+	var topic *topic
+
+	topic, ok := broker.topics[name]
+	if !ok {
+		topic = newTopic(name)
+		topic.start()
+		broker.topics[name] = topic
+	}
+	topic.subscribe(event.client)
+}
+
+func (broker *Broker) handleDelete(client *brokerClient) {
+	for _, topic := range broker.topics {
+		topic.unsubscribe(client)
+	}
+
+	newClients := make([]*brokerClient, 0)
+
+	for _, item := range broker.clients {
+		if item == client {
+			continue
+		}
+		newClients = append(newClients, item)
+	}
+
+	broker.clients = newClients
 }
 
 func (broker *Broker) Start() error {
