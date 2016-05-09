@@ -42,7 +42,7 @@ func handleMessages(client *gobroker.Client) {
 func main() {
 	log.Println("Hello Client")
 
-	client := gobroker.NewClient("localhost", 61626, 10)
+	client := gobroker.NewClient("listen-thing", "localhost", 61626, 10)
 
 	log.Println(" - starting client")
 	err := client.Start()
