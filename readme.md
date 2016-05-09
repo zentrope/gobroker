@@ -5,10 +5,10 @@ Fun and games to learn a bit of [Go](http://golang.org) programming.
 ## Rationale
 
 You want to send data to one or more processes running in your system, but
-don't know want to have to configure a route to them. You want to
+don't want to have to configure a route to them. You want to
 consume data from processes that don't or can't know about your
-existence due to policy or developmental time shifting. The usual
-broker thing.
+existence due to policy or developmental time-shifting. The usual
+broker thing. (If you must use one.)
 
 Some choices:
 
@@ -43,6 +43,10 @@ basically done (though perhaps too synchronous).
 
 The broker is embeddable, so I'd like to work out a testing strategy,
 which, I think, will teach me a lot more about Go.
+
+I want to develop decent enough tests so I can revise the broker down
+to something simpler, so this is as much about testing this kind of
+tcp client/server thing it is about Go or Brokers.
 
 ## Install
 
