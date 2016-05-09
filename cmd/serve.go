@@ -27,13 +27,9 @@ func lock() {
 	<-sigChan
 }
 
-func initialize() {
-	// log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
-	log.Println("Hello Go Mbus")
-}
-
 func main() {
-	initialize()
+	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
+	log.Println("Hello Go Mbus")
 
 	server := gobroker.NewBroker(61626)
 	server.Start()

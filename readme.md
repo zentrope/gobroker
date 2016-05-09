@@ -163,6 +163,19 @@ uint16    : payload's size
 uint8[]   : payload
 ```
 
+**Ack**
+
+The idea is that we send an `ack` from server to client so that the
+client will block until a messages (or subscription) is processed.
+
+```
+int8      : 4 = ack
+```
+
+I'm not completely sure this makes sense, but then that's why I'm
+doing all of this. To make lots of mistakes.
+
+
 **Implications:**
 
 - Payloads, max size 64k

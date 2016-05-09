@@ -37,10 +37,11 @@ func (topic *topic) process() {
 		for {
 			select {
 
-			case _ = <-topic.lifecycle_ch:
+			case <-topic.lifecycle_ch:
 				return
 
 			case msg := <-topic.incoming_ch:
+				log.Println("topic.incoming")
 				num_subs := len(topic.subscribers)
 				if num_subs != 0 {
 					for _, client := range topic.subscribers {
@@ -49,6 +50,7 @@ func (topic *topic) process() {
 				}
 
 			case client := <-topic.subscribe_ch:
+				log.Println("[topic] subscribe")
 				topic.subscribers = append(topic.subscribers, client)
 
 			case client := <-topic.unsubscribe_ch:
@@ -95,6 +97,7 @@ func (client *brokerClient) read() {
 			message, err := DecodeMessage(client.reader)
 			if err != nil {
 				if err == io.EOF {
+					log.Printf("EOF on read()")
 					break
 				}
 				log.Printf("Error: %v\n", err)
@@ -104,6 +107,15 @@ func (client *brokerClient) read() {
 		}
 		client.stop()
 	}()
+}
+
+func (client *brokerClient) ack() {
+	log.Println("[client] sending ack")
+	ack, err := NewAckMessage().Encode()
+	if err != nil {
+		log.Println("Error on ack()", err)
+	}
+	client.publish(ack)
 }
 
 func (client *brokerClient) process() {
@@ -123,10 +135,16 @@ func (client *brokerClient) process() {
 }
 
 func (client *brokerClient) publish(msg []byte) {
+	log.Println("[client] publishing msg")
 	_, err := client.writer.Write(msg)
-	client.writer.Flush()
 	if err != nil {
-		log.Println("ERROR:", err)
+		log.Println("ERROR: publish.write()", err)
+		return
+	}
+
+	err = client.writer.Flush()
+	if err != nil {
+		log.Println("ERROR: publish.flush()", err)
 	}
 }
 
@@ -158,7 +176,7 @@ func newBrokerClient(conn net.Conn, dispatcher *Broker) *brokerClient {
 		conn:         conn,
 		dispatcher:   dispatcher,
 		lifecycle_ch: make(chan int),
-		incoming_ch:  make(chan Message, 0),
+		incoming_ch:  make(chan Message),
 	}
 }
 
@@ -196,6 +214,7 @@ func (broker *Broker) dispatch(client *brokerClient, msg Message) {
 
 	case BrokerUnsubMessage:
 		log.Println(" - unsubscribe not implemented")
+		client.ack()
 	}
 }
 
@@ -209,7 +228,7 @@ func (broker *Broker) processLoop() {
 		for {
 			select {
 
-			case _ = <-broker.lifecycle_ch:
+			case <-broker.lifecycle_ch:
 				break
 
 			case conn := <-broker.accept_ch:
@@ -243,6 +262,8 @@ func (broker *Broker) handlePublish(event pubEvent) {
 		}
 		topic.publish(msg)
 	}
+	log.Println("[broker] publick ack")
+	event.client.ack()
 }
 
 func (broker *Broker) handleSubscribe(event subEvent) {
@@ -256,6 +277,8 @@ func (broker *Broker) handleSubscribe(event subEvent) {
 		broker.topics[name] = topic
 	}
 	topic.subscribe(event.client)
+	log.Println("[broker] subscribe ack")
+	event.client.ack()
 }
 
 func (broker *Broker) handleDelete(client *brokerClient) {
@@ -289,7 +312,11 @@ func (broker *Broker) Start() error {
 
 func (broker *Broker) Stop() {
 	log.Println("Stopping broker.")
-	broker.listener.Close()
+	if broker.listener != nil {
+		broker.listener.Close()
+	} else {
+		fmt.Println(" *** LISTENER IS NIL")
+	}
 }
 
 type pubEvent struct {

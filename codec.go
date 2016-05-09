@@ -12,6 +12,7 @@ const (
 	BrokerPubMessage   typecode = 1
 	BrokerSubMessage   typecode = 2
 	BrokerUnsubMessage typecode = 3
+	BrokerAckMessage   typecode = 4
 )
 
 type Message struct {
@@ -32,6 +33,10 @@ func IsUnsubMessage(b byte) bool {
 	return BrokerUnsubMessage == typecode(b)
 }
 
+func IsAckMessage(b byte) bool {
+	return BrokerAckMessage == typecode(b)
+}
+
 func (m Message) IsPubMessage() bool {
 	return BrokerPubMessage == m.Code
 }
@@ -42,6 +47,10 @@ func (m Message) IsSubMessage() bool {
 
 func (m Message) IsUnsubMessage() bool {
 	return BrokerUnsubMessage == m.Code
+}
+
+func (m Message) IsAckMessage() bool {
+	return BrokerAckMessage == m.Code
 }
 
 func (m Message) TypeOf() string {
@@ -69,11 +78,21 @@ func NewUnsubMessage(topic string) Message {
 	return Message{BrokerUnsubMessage, topic, make([]byte, 0)}
 }
 
+func NewAckMessage() Message {
+	return Message{BrokerAckMessage, "", make([]byte, 0)}
+}
+
 func Encode(message Message) ([]byte, error) {
 	return message.Encode()
 }
 
 func (message Message) Encode() ([]byte, error) {
+
+	if message.Code == BrokerAckMessage {
+		buf := new(bytes.Buffer)
+		binary.Write(buf, binary.LittleEndian, message.Code)
+		return buf.Bytes(), nil
+	}
 
 	t := []byte(message.Topic)
 	tl := uint8(len(t))
@@ -108,6 +127,10 @@ func DecodeMessage(reader *bufio.Reader) (Message, error) {
 	err = binary.Read(reader, binary.LittleEndian, &code)
 	if err != nil {
 		return Message{}, err
+	}
+
+	if code == BrokerAckMessage {
+		return NewAckMessage(), nil
 	}
 
 	err = binary.Read(reader, binary.LittleEndian, &tlen)

@@ -1,11 +1,26 @@
 package main
 
 import (
-	"github.com/zentrope/gobroker"
+	"fmt"
 	"io"
 	"log"
 	"os"
+	"time"
+
+	"github.com/zentrope/gobroker"
 )
+
+func ping(client *gobroker.Client) {
+	for {
+		data := fmt.Sprintf("{\"ping\": \"%v\"}", time.Now())
+		err := client.Publish("sys.alert", []byte(data))
+		if err != nil {
+			log.Println("Error:", err)
+		}
+
+		time.Sleep(2 * time.Second)
+	}
+}
 
 func handleMessages(client *gobroker.Client) {
 	for {
@@ -53,6 +68,8 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+
+	go ping(client)
 
 	handleMessages(client)
 
