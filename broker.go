@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -136,6 +137,10 @@ func (client *brokerClient) process() {
 }
 
 func (client *brokerClient) publish(msg []byte) {
+
+	client.writeLock.Lock()
+	defer client.writeLock.Unlock()
+
 	log.Println("[client] publishing msg")
 	_, err := client.writer.Write(msg)
 	if err != nil {
@@ -167,6 +172,7 @@ type brokerClient struct {
 	conn         net.Conn // Socket
 	reader       *bufio.Reader
 	writer       *bufio.Writer
+	writeLock    sync.Mutex
 	dispatcher   *Broker      // Hub
 	lifecycle_ch chan int     // Client lifecycle
 	incoming_ch  chan Message // Data coming in from the network
