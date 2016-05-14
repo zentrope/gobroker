@@ -2,6 +2,7 @@ package gobroker
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -35,6 +36,10 @@ func NewClient(name, host string, port int, bufsize int) *Client {
 }
 
 func (c *Client) send(data []byte) error {
+
+	if c.conn == nil {
+		return errors.New("Send on nil connection.")
+	}
 
 	_, err := c.conn.Write(data)
 
@@ -88,6 +93,9 @@ func (client *Client) readLoop() {
 
 func (c *Client) Receive() (Message, error) {
 	// fmt.Printf("[%s] client.recv\n", c.name)
+	if c.conn == nil {
+		return Message{}, errors.New("Client is not connected.")
+	}
 	result := <-c.recv_ch
 	return result.message, result.err
 }
@@ -140,5 +148,8 @@ func (client *Client) Start() error {
 
 func (c *Client) Stop() error {
 	// fmt.Printf("[%s] client.stop\n", c.name)
-	return c.conn.Close()
+	if c.conn != nil {
+		return c.conn.Close()
+	}
+	return nil
 }

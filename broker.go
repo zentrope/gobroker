@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"strings"
+	"time"
 )
 
 //-----------------------------------------------------------------------------
@@ -223,13 +224,12 @@ func (broker *Broker) disconnect(client *brokerClient) {
 }
 
 func (broker *Broker) processLoop() {
-
 	go func() {
 		for {
 			select {
 
 			case <-broker.lifecycle_ch:
-				break
+				return
 
 			case conn := <-broker.accept_ch:
 				broker.handleAccept(conn)
@@ -307,6 +307,11 @@ func (broker *Broker) Start() error {
 	broker.listener = l
 	broker.accept()
 	broker.processLoop()
+
+	// TODO: This should not return until the accept and process
+	//       loops are fully engaged (that is, if we want to use
+	//       this stuff in a tight test loop).
+	time.Sleep(1 * time.Second)
 	return nil
 }
 

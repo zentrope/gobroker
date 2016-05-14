@@ -7,9 +7,11 @@ import (
 	"testing"
 )
 
-const port = 61626
+var port = 63000
 
 func TestSingleMessage(t *testing.T) {
+
+	defer func() { port++ }()
 
 	log.SetOutput(ioutil.Discard)
 
@@ -40,13 +42,23 @@ func TestSingleMessage(t *testing.T) {
 	}
 }
 
-func testMultipleSubscribersSameMessage(t *testing.T) {
+func TestMultipleSubscribersSameMessage(t *testing.T) {
+
+	defer func() { port++ }()
 
 	log.SetOutput(ioutil.Discard)
 
 	broker := NewBroker(port)
-	broker.Start()
-	defer broker.Stop()
+	err := broker.Start()
+	if err != nil {
+		t.Fatalf("Unable to start embedded broker: %v", err)
+	}
+	defer func() {
+		t.Logf("Stopping broker.")
+		broker.Stop()
+	}()
+
+	// time.Sleep(1 * time.Second)
 
 	testTopic := "test.alert"
 	testPayload := "test.data"
@@ -55,17 +67,29 @@ func testMultipleSubscribersSameMessage(t *testing.T) {
 	sender := NewClient("sender", "localhost", port, 0)
 	sender.Start()
 
-	defer sender.Stop()
+	defer func() {
+		t.Logf("Stopping sender")
+		sender.Stop()
+	}()
 
 	numClients := 2
 	var clients []*Client
 	for n := 0; n < numClients; n++ {
 
+		n := n
+
 		c := NewClient(fmt.Sprintf("client-%d", n), "localhost", port, 0)
 		c.Start()
 
-		defer c.Stop()
-		defer c.Unsubscribe(testTopic)
+		defer func() {
+			t.Logf("Stopping client %v at end of test.\n", n)
+			c.Stop()
+		}()
+
+		defer func() {
+			t.Logf("Unsubscribing client %d\n", n)
+			c.Unsubscribe(testTopic)
+		}()
 
 		// It's possible for a Subscribe action to NOT block
 		// before it occurs on the server, so the Receive
@@ -84,6 +108,7 @@ func testMultipleSubscribersSameMessage(t *testing.T) {
 
 	for n := 0; n < numClients; n++ {
 
+		t.Logf("Receiving for client: %v\n", n)
 		c := clients[n]
 		msg, err := c.Receive()
 
